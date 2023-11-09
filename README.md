@@ -1,5 +1,6 @@
 # Master Project
 
++ pip install opencv-contrib-python
 + Untitled.ipynb is SAM and perspective transformation. ( including all the steps like pythons scripts)
 
 + AAA.ipynb is SAM model.
