@@ -4,9 +4,9 @@ import cv2
 import math
 
 # Read input and get corners of aruco
-img = cv2.imread('../Images/Slab2R.jpg')
+img = cv2.imread('../Images/20231027_152103.jpg')
 parameters = cv2.aruco.DetectorParameters()
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_50)
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
 corners, _, _ = cv2.aruco.detectMarkers(img, aruco_dict, parameters=parameters)
 
 hh, ww = img.shape[:2]
@@ -16,8 +16,8 @@ input = np.float32(corners[0][0])  # Access the inner array of corners
 print(input)
 
 # Get top and left dimensions and set them as the width and height of the output rectangle
-width = round(math.hypot(input[0, 0] - input[1, 0], input[0, 1] - input[1, 1]))
-height = round(math.hypot(input[0, 0] - input[3, 0], input[0, 1] - input[3, 1]))
+width = 150
+height = 150
 print("width:", width, "height:", height)
 
 # Set upper left coordinates for output rectangle
@@ -25,7 +25,7 @@ x = input[0, 0]
 y = input[0, 1]
 
 # Specify output coordinates for corners of red quadrilateral in order TL, TR, BR, BL as x, y
-output = np.float32([[0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]])
+output = np.float32([[0, 0], [width, 0], [width, height], [0, height]])
 
 # Compute perspective matrix
 matrix = cv2.getPerspectiveTransform(input, output)
@@ -56,7 +56,7 @@ output_size = (bbox_width, bbox_height)
 imgOutput = cv2.warpPerspective(img, final_matrix, output_size, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0, 0, 0))
 
 # Save the warped output
-cv2.imwrite("slab6(1).jpg", imgOutput)
+cv2.imwrite("../Images/Pocket4-Trans.jpg", imgOutput)
 
 # Show the result
 cv2.namedWindow("result", cv2.WINDOW_NORMAL)
