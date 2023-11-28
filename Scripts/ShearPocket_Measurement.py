@@ -2,77 +2,109 @@
 # Shear Pocket dimension detection
 import cv2
 import numpy as np
-from object_detector import *
 
 def euclidean_distance(point1, point2):
     return np.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
 
-# Load Aruco detector
-parameters = cv2.aruco.DetectorParameters()
-aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+def process_image_pair(input_path1, input_path2, box_counter, previous_largest_x_coord=None, box_dimensions={}):
+    parameters = cv2.aruco.DetectorParameters()
+    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+    img1 = cv2.imread(input_path1)
+    corners, _, _ = cv2.aruco.detectMarkers(img1, aruco_dict, parameters=parameters)
 
-# Load Object Detector
-detector = HomogeneousBgDetector()
+    current_smallest_x_coord = None
+    current_largest_x_coord = None
 
-# Load the image
-img1 = cv2.imread("../Images/Pocket2-Trans.jpg")
+    if corners:
+        aruco_perimeter = cv2.arcLength(corners[0], True)
+        pixel_cm_ratio = aruco_perimeter / 600
+        img2 = cv2.imread(input_path2)
+        hsv = cv2.cvtColor(img2, cv2.COLOR_BGR2HSV)
+        l_b = np.array([0, 0, 138])
+        u_b = np.array([255, 255, 255])
+        mask = cv2.inRange(hsv, l_b, u_b)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+        contours = sorted(contours, key=lambda c: cv2.boundingRect(c)[0], reverse=True)
 
-# Get Aruco marker
-corners, _, _ = cv2.aruco.detectMarkers(img1, aruco_dict, parameters=parameters)
+        for contour in contours:
+            rect = cv2.minAreaRect(contour)
+            box = cv2.boxPoints(rect)
+            box_int = np.intp(box)
+            cv2.drawContours(img2, [box_int], 0, (0, 255, 0), 2)
 
-# Aruco Perimeter
-aruco_perimeter = cv2.arcLength(corners[0], True)
+            x_coord = cv2.boundingRect(contour)[0]
+            if current_smallest_x_coord is None or x_coord < current_smallest_x_coord:
+                current_smallest_x_coord = x_coord
+            if current_largest_x_coord is None or x_coord > current_largest_x_coord:
+                current_largest_x_coord = x_coord
 
-# Pixel to mm ratio
-pixel_cm_ratio = aruco_perimeter / 600
-print(pixel_cm_ratio)
+            if previous_largest_x_coord is not None and x_coord == current_largest_x_coord:
+                assigned_number = box_counter - 1
+            else:
+                assigned_number = box_counter
+                box_counter += 1
 
-# Load the image
-img = cv2.imread('../Images/P2.jpg')
+            top_left, top_right, bottom_right, bottom_left = box
+            width = euclidean_distance(top_left, top_right) / pixel_cm_ratio
+            height = euclidean_distance(top_left, bottom_left) / pixel_cm_ratio
+
+            # Ensure height is always larger than width
+            if width > height:
+                width, height = height, width
+
+            text_position = (int(top_left[0]), int(top_left[1]))
+            cv2.putText(img2, str(assigned_number), text_position, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+            # Update box dimensions dictionary
+            if assigned_number in box_dimensions:
+                box_dimensions[assigned_number].append((width, height))
+            else:
+                box_dimensions[assigned_number] = [(width, height)]
+
+        cv2.namedWindow(f"Original Image: {input_path1}", cv2.WINDOW_NORMAL)
+        cv2.namedWindow(f"Processed Image: {input_path1} and {input_path2}", cv2.WINDOW_NORMAL)
+        cv2.imshow(f"Original Image: {input_path1}", img1)
+        cv2.imshow(f"Processed Image: {input_path1} and {input_path2}", img2)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+    return box_counter, current_largest_x_coord
 
 
-# Convert the image to HSV
-hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+if __name__ == "__main__":
+    image_pairs = [
+        ("../Images/Pocket1-Trans.jpg", "../Images/P1.jpg"),
+        ("../Images/Pocket2-Trans.jpg", "../Images/P2.jpg"),
 
-# Define the HSV range and create a mask
-l_b = np.array([0, 0, 138])
-u_b = np.array([255, 255, 255])
-mask = cv2.inRange(hsv, l_b, u_b)
+    ]
 
-# Find contours in the mask
-contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    image_pairs1 = [
+        ("../Images/Pocket3-Trans.jpg", "../Images/P3.jpg"),
+        ("../Images/Pocket4-Trans.jpg", "../Images/P4.jpg"),
 
-# Sort the contours by area in descending order
-contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]  # Get the two largest contours
+    ]
 
-# Iterate through the two largest contours found
-for contour in contours:
-    # Get the bounding rectangle for the current contour
-    rect = cv2.minAreaRect(contour)
-    box = cv2.boxPoints(rect)  # Get four vertices of the rotated rectangle
-    box_int = np.intp(box)  # Convert vertices to integers
-    cv2.drawContours(img, [box_int], 0, (0, 255, 0), 2)
+    box_counter = 1
+    previous_largest_x_coord = None
 
-    # Extract the top-left, top-right, bottom-right, bottom-left corners
-    top_left, top_right, bottom_right, bottom_left = box
+    # Dictionary to store dimensions for each assigned number
+    box_dimensions = {}
 
-    # Calculate the width and height in cm based on your pixel-to-cm ratio
-    width = euclidean_distance(top_left, top_right) / pixel_cm_ratio
-    height = euclidean_distance(top_left, bottom_left) / pixel_cm_ratio
+    for input_path1, input_path2 in image_pairs:
+        box_counter, previous_largest_x_coord = process_image_pair(input_path1, input_path2, box_counter, previous_largest_x_coord, box_dimensions)
 
-    # Printing the calculated width and height along with the corners
-    print("Width:", width)
-    print("Height:", height)
-    print("Top-Left:", top_left)
-    print("Top-Right:", top_right)
-    print("Bottom-Left:", bottom_left)
-    print("Bottom-Right:", bottom_right)
-    print("-" * 30)
+    # Reset box_counter and previous_largest_x_coord
+    box_counter = box_counter
+    previous_largest_x_coord = None
 
-# Display the result
-cv2.namedWindow("OriginalImg", cv2.WINDOW_NORMAL)
-cv2.imshow("OriginalImg", img1)
-cv2.namedWindow("result", cv2.WINDOW_NORMAL)
-cv2.imshow("result", img)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+    for input_path1, input_path2 in image_pairs1:
+        box_counter, previous_largest_x_coord = process_image_pair(input_path1, input_path2, box_counter, previous_largest_x_coord, box_dimensions)
+
+    # Calculate and display the average width and height for each assigned number
+    for assigned_number, dimensions_list in box_dimensions.items():
+        total_width = sum(width for width, _ in dimensions_list)
+        total_height = sum(height for _, height in dimensions_list)
+        average_width = total_width / len(dimensions_list)
+        average_height = total_height / len(dimensions_list)
+        print(f"Box {assigned_number}: Average Width = {average_width:.2f} cm, Average Height = {average_height:.2f} cm")
